@@ -1,0 +1,14 @@
+.venv/
+.env
+notes.md
+
+# Generated datasets (large files, not needed in repo)
+src/drugs.csv
+src/drugs_cleaned.csv
+src/drugs_with_rag.csv
+src/drugs_sampled.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
