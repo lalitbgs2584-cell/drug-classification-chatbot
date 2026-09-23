@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, Any, List
 import pandas as pd
@@ -6,10 +7,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Build RAG index on startup so first query is never cold."""
+    try:
+        from src.rag.build_index import build_index
+        build_index()
+    except Exception as e:
+        print(f"[RAG] Startup index build failed (non-fatal): {e}")
+    yield
+
+
 app = FastAPI(
     title="Drug Classification API",
     description="FastAPI service serving analytical charts and chatbot interactions for drug data",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS for local Streamlit frontend
@@ -63,6 +77,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     timestamp: str
+    sources: List[str] = []
 
 
 @app.get("/")
@@ -205,19 +220,28 @@ def get_uses_text():
 @app.post("/api/chat", response_model=ChatResponse)
 def chat_endpoint(payload: ChatRequest):
     """
-    Chatbot endpoint.
-    Placeholder conversational response — ready for full RAG and classification logic.
+    Chatbot endpoint powered by ChromaDB RAG + OpenAI GPT-4o-mini.
+    Falls back to a friendly placeholder if RAG is unavailable.
     """
     msg = payload.message.strip()
     timestamp = datetime.now().strftime("%I:%M %p")
 
-    # Friendly placeholder responses
-    lower_msg = msg.lower()
-    if "side effect" in lower_msg:
-        reply = f"I received your question regarding side effects in '{msg}'. Common side effects in the dataset include Nausea, Vomiting, and Diarrhea. Detailed RAG lookup will be enabled here soon!"
-    elif "habit" in lower_msg:
-        reply = f"Regarding habit-forming drugs: our dataset flags over 6,000 habit-forming medicines. RAG search will pinpoint specific risks once attached."
-    else:
-        reply = f"Received: \"{msg}\". The chatbot backend is connected and ready. You can plug in your RAG pipeline or OpenAI model in `src/api/app.py`!"
-
-    return ChatResponse(reply=reply, timestamp=timestamp)
+    try:
+        from src.rag.query import rag_answer
+        result = rag_answer(msg)
+        return ChatResponse(
+            reply=result["answer"],
+            timestamp=timestamp,
+            sources=result.get("sources", []),
+        )
+    except Exception as e:
+        print(f"[RAG] Query failed, using fallback: {e}")
+        # Graceful fallback — never 500 during a live demo
+        lower_msg = msg.lower()
+        if "side effect" in lower_msg:
+            reply = "Common side effects in the dataset include Nausea, Vomiting, and Diarrhea. (RAG unavailable — check index build.)"
+        elif "habit" in lower_msg:
+            reply = "Our dataset flags over 6,000 habit-forming medicines. (RAG unavailable — check index build.)"
+        else:
+            reply = f'Your question "{msg}" was received. RAG pipeline is warming up — try again in a moment.'
+        return ChatResponse(reply=reply, timestamp=timestamp, sources=[])

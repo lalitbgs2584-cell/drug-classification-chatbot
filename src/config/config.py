@@ -16,5 +16,8 @@ config = {
     "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID"),
     "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
     "aws_region": os.getenv("AWS_REGION"),
-    "aws_bucket_name": os.getenv("AWS_BUCKET_NAME")
+    "aws_bucket_name": os.getenv("AWS_BUCKET_NAME"),
+    "chroma_db_path": os.getenv("CHROMA_DB_PATH", "src/chroma_db"),
+    "embedding_model_name": os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"),
+    "rag_collection_name": os.getenv("RAG_COLLECTION_NAME", "medicines"),
 }

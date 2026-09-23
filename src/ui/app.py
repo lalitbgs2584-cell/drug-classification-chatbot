@@ -214,38 +214,59 @@ with tab_chatbot:
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": "Hello! I am your Drug Classification & Clinical Assistant. Ask me anything about medicine uses, side effects, or drug classes."
+                "content": "Hello! I am your Drug Classification & Clinical Assistant powered by RAG. Ask me anything about medicine uses, side effects, or drug classes.",
+                "sources": []
             }
         ]
 
-    # Render previous conversation messages
+    # Render previous conversation messages (with sources if present)
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("sources"):
+                st.caption("📚 Sources: " + ", ".join(msg["sources"]))
 
     # Chat Input Box
     user_prompt = st.chat_input("Type your question here (e.g. 'What are common side effects of Augmentin?')...")
 
     if user_prompt:
         # Display user query immediately
-        st.session_state.messages.append({"role": "user", "content": user_prompt})
+        st.session_state.messages.append({"role": "user", "content": user_prompt, "sources": []})
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
-        # Send request to FastAPI backend
+        # Send request to FastAPI backend (longer timeout — RAG + LLM takes time)
         bot_response = None
+        bot_sources = []
         try:
-            res = requests.post(f"{API_URL}/api/chat", json={"message": user_prompt}, timeout=8)
+            res = requests.post(
+                f"{API_URL}/api/chat",
+                json={"message": user_prompt},
+                timeout=60,   # RAG + LLM can take up to ~30s on first call
+            )
             if res.status_code == 200:
-                bot_response = res.json().get("reply")
+                data = res.json()
+                bot_response = data.get("reply")
+                bot_sources = data.get("sources", [])
         except Exception:
             pass
 
         # Fallback if FastAPI is not currently running
         if not bot_response:
-            bot_response = f"*(FastAPI offline)*: You asked: '{user_prompt}'. Connect your FastAPI server or RAG model in `src/api/app.py` to enable automated clinical responses."
+            bot_response = (
+                f"*(FastAPI offline)*: You asked: '{user_prompt}'. "
+                "Start the FastAPI server with `python -m uvicorn src.api.app:app --port 8000` "
+                "to enable the RAG-powered assistant."
+            )
 
-        # Display bot response
-        st.session_state.messages.append({"role": "assistant", "content": bot_response})
+        # Persist and display bot response + sources
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": bot_response,
+            "sources": bot_sources,
+        })
         with st.chat_message("assistant"):
             st.markdown(bot_response)
+            if bot_sources:
+                st.caption("📚 Sources: " + ", ".join(bot_sources))
+

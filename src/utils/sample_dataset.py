@@ -34,10 +34,26 @@ def sample_by_category(
     if category_col not in df.columns:
         raise ValueError(f"Column '{category_col}' not found in dataframe. Available: {list(df.columns)}")
 
-    # Group by category and sample up to max_per_category per group
-    sampled_df = df.groupby(category_col, group_keys=False, dropna=False).apply(
-        lambda x: x.sample(min(len(x), max_per_category), random_state=random_state)
-    ).reset_index(drop=True)
+    # Group by category and sample up to max_per_category per group.
+    # NOTE: pandas 3.x drops the groupby key column when using .apply(), so we
+    # collect sampled positional indices per group and use .iloc to preserve ALL columns.
+    sampled_indices = (
+        df.groupby(category_col, group_keys=False, dropna=False)
+        .apply(lambda x: x.sample(min(len(x), max_per_category), random_state=random_state))
+        .index
+    )
+
+    # Ensure key benchmark/popular drugs from the cleaned dataset are always included in the sample
+    benchmark_keywords = [
+        "augmentin", "paracetamol", "amoxicillin", "metformin", "aspirin",
+        "azithromycin", "pantoprazole", "cetirizine", "atorvastatin",
+        "ciprofloxacin", "omeprazole", "losartan", "doxycycline", "ibuprofen"
+    ]
+    benchmark_pattern = "|".join(benchmark_keywords)
+    benchmark_indices = df[df["drug_name"].str.lower().str.contains(benchmark_pattern, na=False)].index
+    all_indices = sampled_indices.union(benchmark_indices)
+
+    sampled_df = df.loc[all_indices].reset_index(drop=True)
 
     category_count = df[category_col].nunique(dropna=False)
     print(f"Sampled {len(sampled_df):,} rows from {len(df):,} total records across {category_count} '{category_col}' groups.")

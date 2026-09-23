@@ -8,6 +8,9 @@ src/drugs_cleaned.csv
 src/drugs_with_rag.csv
 src/drugs_sampled.csv
 
+# ChromaDB vector store (rebuilt from CSV on startup)
+src/chroma_db/
+
 # Python cache
 __pycache__/
 *.pyc
